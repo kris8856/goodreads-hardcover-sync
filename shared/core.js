@@ -378,8 +378,21 @@ export class SyncEngine {
 
     async addBookToHardcover(bookId, rating, readAt) {
         const mutation = `mutation AddUserBook($book_id: Int!, $rating: numeric) { insert_user_book(object: { book_id: $book_id, status_id: 3, rating: $rating }) { id error } }`;
-        const res = await this.graphqlQuery(mutation, { book_id: bookId, rating: rating ? parseInt(rating) : null });
-        
+
+        const parsedRating = Number.parseFloat(rating);
+        const validRating =
+            Number.isFinite(parsedRating) &&
+            parsedRating >= 0.5 &&
+            parsedRating <= 5 &&
+            Number.isInteger(parsedRating * 2)
+                ? parsedRating
+                : null;
+
+        const res = await this.graphqlQuery(mutation, {
+            book_id: bookId,
+            rating: validRating
+        });
+
         const data = res.data.insert_user_book;
         if (data && data.error) {
              if (data.error.includes("Uniqueness violation")) {
@@ -389,7 +402,7 @@ export class SyncEngine {
              }
              return null;
         }
-        
+
         return data?.id;
     }
 
