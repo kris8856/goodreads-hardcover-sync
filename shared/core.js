@@ -789,21 +789,56 @@ export class SyncEngine {
         }
     }
 
-    async addReadDate(userBookId, finishedAt) {
-        const mutation = `
-            mutation AddReadDate($user_book_id: Int!, $finished_at: date) {
-                insert_user_book_read(
-                    user_book_id: $user_book_id,
-                    user_book_read: {finished_at: $finished_at}
-                ) {
-                    id
-                }
+async addReadDate(userBookId, finishedAt) {
+    // Check existing reading-history rows first so repeated syncs
+    // cannot create duplicate "Read" entries for the same date.
+    const existingQuery = `
+        query ExistingReadDates($user_book_id: Int!) {
+            user_book_reads(
+                where: {user_book_id: {_eq: $user_book_id}}
+            ) {
+                id
+                finished_at
             }
-        `;
+        }
+    `;
 
-        await this.graphqlQuery(mutation, {
-            user_book_id: userBookId,
-            finished_at: finishedAt
-        });
+    const existingRes = await this.graphqlQuery(existingQuery, {
+        user_book_id: userBookId
+    });
+
+    const existingReads = existingRes.data.user_book_reads || [];
+
+    const duplicate = existingReads.some(
+        read => read.finished_at === finishedAt
+    );
+
+    if (duplicate) {
+        this.log(
+            `[Skip] Read date ${finishedAt} already exists for Hardcover user book ${userBookId}.`,
+            'debug'
+        );
+        return;
     }
+
+    const mutation = `
+        mutation AddReadDate($user_book_id: Int!, $finished_at: date) {
+            insert_user_book_read(
+                user_book_id: $user_book_id,
+                user_book_read: {finished_at: $finished_at}
+            ) {
+                id
+            }
+        }
+    `;
+
+    await this.graphqlQuery(mutation, {
+        user_book_id: userBookId,
+        finished_at: finishedAt
+    });
+
+    this.log(
+        `Added new Hardcover read-history entry for ${finishedAt}.`,
+        'debug'
+    );
 }
